@@ -107,6 +107,39 @@ body {
 .sample-btn { background: #f4f5f6; border: 1.5px solid #e0e0e0; color: #555; }
 .sample-btn:hover { background: #ececec; }
 
+.prompt-desc { font-size: .78rem; color: #777; margin-bottom: 8px; }
+.prompt-box {
+  width: 100%;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: .72rem;
+  white-space: pre-wrap;
+  resize: vertical;
+  background: #fafafa;
+  color: #444;
+}
+.prompt-box:focus { outline: none; border-color: var(--accent); }
+.copy-btn {
+  margin-top: 8px;
+  width: 100%;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 9px;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .12s ease;
+  font-family: inherit;
+}
+.copy-btn:hover { background: var(--accent); color: #fff; }
+.copy-btn.copied { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+
 .upload-status { display: block; margin-top: 10px; font-size: .78rem; font-weight: 600; }
 .status-ok { color: #2e7d32; }
 .status-error { color: #e53935; }
@@ -318,6 +351,31 @@ const DUMMY_CSV = `subject,question_label,mark_ids,correct_answers,points,rule_t
 リスニング,第2問 (完答),"18,19,20,21","2,4,1,3",8,KANTO,NUM_0_9
 リスニング,第3問 A (完答),"22,23","4,2",6,KANTO,NUM_0_9`;
 
+/* CSV作成用プロンプト（画像からCSVを抽出させる指示文） */
+const CSV_PROMPT = `# 目的
+共通テストの解答画像から、自動採点HTMLアプリ用のCSVデータを正確に抽出してください。
+
+# 厳格な出力ルール
+1. subject（科目名）は必ず以下の【許可された日本語名】のいずれか1つを寸分たがわず使用してください。
+   【許可科目名】
+   地理総合・地理探究, 歴史総合・日本史探究, 歴史総合・世界史探究, 公共・倫理, 公共・政治経済, 地理総合, 歴史総合, 公共, 現代文, 古文, 漢文, リーディング, リスニング, 物理基礎, 化学基礎, 生物基礎, 地学基礎, 物理, 化学, 生物, 地学, 数学I, 数学I・数学A, 数学II・数学BC, 情報I
+
+2. question_label（設問名）は「問1」ではなく「(1)」の形式にしてください。
+   例: 第1問 A (1), 第1問 B (5), 第4問 (18)-(19)
+
+3. correct_answers（正解）には丸数字（①等）を使わず、必ず「半角数字（1, 2, 3...）」または「符号（-）」で出力してください。
+
+# CSVフォーマット（ヘッダー）
+subject,question_label,mark_ids,correct_answers,points,rule_type,options_type
+
+# 出力例（リスニングの場合）
+subject,question_label,mark_ids,correct_answers,points,rule_type,options_type
+リスニング,第1問 A (1),1,3,4,SINGLE,NUM_0_9
+リスニング,第1問 A (2),2,4,4,SINGLE,NUM_0_9
+リスニング,第4問 A (18)-(21),"18,19,20,21","3,1,5,2",4,KANTO,NUM_0_9
+
+# 注意事項
+- コードブロック（\`\`\`csv 〜 \`\`\`）の中身だけを出力してください。説明文は一切不要です。`;
 /* =========================================================
    2. 状態
 ========================================================= */
@@ -617,7 +675,14 @@ function renderSelectionScreen() {
       <span id="uploadStatus" class="upload-status"></span>
       ${startButtonsHtml}
     </div>
-
+    
+    <div class="panel">
+      <div class="panel-title">🖼️ 画像からCSVを作るプロンプト</div>
+      <div class="prompt-desc">解答画像をAI(Claude等)に読み込ませてCSVを作ってもらう時に使うプロンプトです。コピーして画像と一緒に貼り付けてください。</div>
+      <textarea id="promptBox" class="prompt-box" readonly rows="6">${escapeHTML(CSV_PROMPT)}</textarea>
+      <button type="button" id="promptCopyBtn" class="copy-btn">📋 プロンプトをコピー</button>
+    </div>
+    
     <div class="panel">
       <div class="panel-title-row">
         <div class="panel-title">📊 採点履歴</div>
@@ -667,6 +732,31 @@ function renderSelectionScreen() {
 
   document.getElementById("sampleBtn").addEventListener("click", () => {
     loadCSVText(DUMMY_CSV, "サンプルデータ");
+  });
+
+  document.getElementById("promptCopyBtn").addEventListener("click", () => {
+    const btn = document.getElementById("promptCopyBtn");
+    const original = "📋 プロンプトをコピー";
+    const done = () => {
+      showToast("プロンプトをコピーしました！");
+      btn.textContent = "✓ コピーしました！";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
+    };
+    const text = document.getElementById("promptBox").value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        const ta = document.getElementById("promptBox");
+        ta.select();
+        document.execCommand("copy");
+        done();
+      });
+    } else {
+      const ta = document.getElementById("promptBox");
+      ta.select();
+      document.execCommand("copy");
+      done();
+    }
   });
 
   document.getElementById("clearHistoryBtn").addEventListener("click", () => {
